@@ -17,17 +17,6 @@ namespace limit_nvpstate {
             InitializeComponent();
         }
 
-        private void AddProcess_Click(object sender, EventArgs e) {
-
-        }
-
-        private void RemoveProcess_Click(object sender, EventArgs e) {
-
-        }
-
-        private void EventHandler(object sender, EventArrivedEventArgs e) {
-
-        }
 
         private void LoadSettings()
         {
@@ -66,11 +55,9 @@ namespace limit_nvpstate {
                 ? $"-setPStateLimit:{gpuIndex.SelectedIndex},5"
                 : $"-setPStateLimit:{gpuIndex.SelectedIndex},0";
             _ = inspector.Start();
+            limited = enabled;
         }
 
-        private void ApplySettings_Click(object sender, EventArgs e) {
-
-        }
 
         private void Limitnvpstate_Load(object sender, EventArgs e) {
 
@@ -179,9 +166,6 @@ namespace limit_nvpstate {
             Close();
         }
 
-        private void Processes_SelectedIndexChanged(object sender, EventArgs e) {
-
-        }
 
         private void slow_click(object sender, EventArgs e)
         {
@@ -280,7 +264,6 @@ namespace limit_nvpstate {
                 if (steps_until_fast > 3)
                 {
                     LimitPstate(false);
-                    limited = false;
                     Console.WriteLine("LimitPstate(false);");
                     steps_until_slow = 0;
                 }
@@ -298,7 +281,6 @@ namespace limit_nvpstate {
                 if (steps_until_slow > 5)
                 {
                     LimitPstate(true);
-                    limited = true;
                     Console.WriteLine("LimitPstate(true);");
                     steps_until_fast = 0;
                 }
