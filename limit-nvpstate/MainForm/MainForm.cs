@@ -11,31 +11,22 @@ using System.Windows.Forms;
 namespace limit_nvpstate {
     public partial class limitnvpstate : Form {
         private readonly Process inspector = new Process();
+        private bool automaticSwitchingEnabled = true;
 
         public limitnvpstate() {
             InitializeComponent();
         }
 
         private void AddProcess_Click(object sender, EventArgs e) {
-            OpenFileDialog ofd = new OpenFileDialog();
-            if (ofd.ShowDialog() == DialogResult.OK) {
-                string fileName = Path.GetFileName(ofd.FileName).Replace(".exe", "");
-                _ = processes.Items.Add(fileName);
-            }
+
         }
 
         private void RemoveProcess_Click(object sender, EventArgs e) {
-            processes.Items.RemoveAt(processes.SelectedIndex);
+
         }
 
         private void EventHandler(object sender, EventArrivedEventArgs e) {
-            Process createdProcess = Process.GetProcessById((int)(uint)e.NewEvent.Properties["ProcessID"].Value);
 
-            if (processes.Items.Contains(createdProcess.ProcessName)) {
-                LimitPstate(false);
-                createdProcess.WaitForExit();
-                LimitPstate(true);
-            }
         }
 
         private void LoadSettings() {
@@ -57,14 +48,8 @@ namespace limit_nvpstate {
                     config.SetValue("ProcessList", new string[] { }, RegistryValueKind.MultiString);
                 }
 
-                pstateLimit.SelectedIndex = Convert.ToInt32(config.GetValue("LimitPState"));
                 gpuIndex.SelectedIndex = Convert.ToInt32(config.GetValue("IndexOfGPU"));
                 startMinimizedToolStripMenuItem.Checked = Convert.ToBoolean(config.GetValue("StartMinimized"));
-
-                processes.Items.Clear();
-                foreach (string i in (string[])config.GetValue("ProcessList")) {
-                    _ = processes.Items.Add(i);
-                }
             }
         }
 
@@ -72,19 +57,13 @@ namespace limit_nvpstate {
             if (limited && enabled) return;
             if (!limited && !enabled) return;
             inspector.StartInfo.Arguments = enabled
-                //? $"-setPStateLimit:{gpuIndex.SelectedIndex},{pstateLimit.SelectedItem.ToString().Replace("P", "")}"
                 ? $"-setPStateLimit:{gpuIndex.SelectedIndex},5"
                 : $"-setPStateLimit:{gpuIndex.SelectedIndex},0";
             _ = inspector.Start();
         }
 
         private void ApplySettings_Click(object sender, EventArgs e) {
-            using (RegistryKey config = Registry.CurrentUser.CreateSubKey("SOFTWARE\\limit-nvpstate")) {
-                config.SetValue("LimitPState", pstateLimit.SelectedIndex, RegistryValueKind.String);
-                config.SetValue("IndexOfGPU", gpuIndex.SelectedIndex, RegistryValueKind.String);
-                config.SetValue("ProcessList", processes.Items.OfType<string>().ToArray(), RegistryValueKind.MultiString);
-            }
-            LoadSettings();
+
         }
 
         private void Limitnvpstate_Load(object sender, EventArgs e) {
@@ -128,11 +107,6 @@ namespace limit_nvpstate {
 
 
 
-
-
-
-
-            //return;
             // create a new instance of the ManagementObjectSearcher class
             ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT * FROM Win32_VideoController");
 
@@ -154,20 +128,12 @@ namespace limit_nvpstate {
             inspector.StartInfo.FileName = "nvidiaInspector.exe";
             inspector.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
 
-            // configure event handler
-            //ManagementEventWatcher startWatch = new ManagementEventWatcher(new WqlEventQuery("SELECT * FROM Win32_ProcessStartTrace"));
-            //startWatch.EventArrived += new EventArrivedEventHandler(EventHandler);
-            //startWatch.Start();
 
-
-            LoadSettings(); // load settings when program starts
-            //LimitPstate(true); // limit pstates when program starts
+            LoadSettings();
 
             if (startMinimizedToolStripMenuItem.Checked) {
                 WindowState = FormWindowState.Minimized;
             }
-
-            removeProcess.Enabled = false; // disable remove button by default, is re-enabled when item in list is selected
         }
 
         private void ExitToolStripMenuItem_Click(object sender, EventArgs e) {
@@ -208,8 +174,7 @@ namespace limit_nvpstate {
         }
 
         private void Processes_SelectedIndexChanged(object sender, EventArgs e) {
-            // only enable the remove process button if a index is selected
-            removeProcess.Enabled = processes.SelectedIndex > -1;
+
         }
 
         private void button1_Click(object sender, EventArgs e)
@@ -328,32 +293,30 @@ namespace limit_nvpstate {
 
         private void button3_Click(object sender, EventArgs e)
         {
-            //ManagementObjectSearcher searcher = new ManagementObjectSearcher("root\\CIMV2", "SELECT * FROM Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine");
 
-            //foreach (ManagementObject queryObj in searcher.Get())
-            //{
-            //    var usage = queryObj["UtilizationPercentage"];
-            //    if (int.Parse(usage + "") > 0)
-            //        Console.WriteLine("GPU Usage: {0}%", usage);
-            //}
-            // Create a new process to execute the nvidia-smi command
-            Process process = new Process();
-            process.StartInfo.FileName = "nvidia-smi";
-            process.StartInfo.Arguments = "--query-gpu=utilization.gpu --format=csv,noheader,nounits";
-            process.StartInfo.RedirectStandardOutput = true;
-            process.StartInfo.UseShellExecute = false;
-            process.StartInfo.CreateNoWindow = true;
+        }
 
-            // Start the process and read the output
-            process.Start();
-            string output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit();
+        // auto mode on or off
+        private void checkBox1_CheckedChanged(object sender, EventArgs e)
+        {
+            automaticSwitchingEnabled = checkBox1.Checked;
 
-            // Parse the output to get the GPU usage
-            int gpuUsage = int.Parse(output.Trim());
+            // Save the setting to registry
+            using (RegistryKey config = Registry.CurrentUser.CreateSubKey("SOFTWARE\\limit-nvpstate"))
+            {
+                config.SetValue("AutomaticSwitching", automaticSwitchingEnabled.ToString(), RegistryValueKind.String);
+            }
 
-            // Print the GPU usage
-            Console.WriteLine("GPU Usage: " + gpuUsage + "%");
+            Console.WriteLine("Automatic switching: " + (automaticSwitchingEnabled ? "Enabled" : "Disabled"));
+        }
+
+        private void gpuIndex_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            using (RegistryKey config = Registry.CurrentUser.CreateSubKey("SOFTWARE\\limit-nvpstate"))
+            {
+                config.SetValue("IndexOfGPU", gpuIndex.SelectedIndex, RegistryValueKind.String);
+            }
+            LoadSettings();
         }
     }
 }
