@@ -8,12 +8,15 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
-namespace limit_nvpstate {
-    public partial class limitnvpstate : Form {
+namespace limit_nvpstate
+{
+    public partial class limitnvpstate : Form
+    {
         private readonly Process inspector = new Process();
         private bool automaticSwitchingEnabled = true;
 
-        public limitnvpstate() {
+        public limitnvpstate()
+        {
             InitializeComponent();
         }
 
@@ -45,10 +48,22 @@ namespace limit_nvpstate {
                 // Set checkbox state and variable
                 automaticSwitchingEnabled = Convert.ToBoolean(config.GetValue("AutomaticSwitching"));
                 checkBox1.Checked = automaticSwitchingEnabled;
+
+                // Load the always limit list into the text box
+                alwayslimitlist.Text = config.GetValue("AlwaysLimitList").ToString();
             }
         }
 
-        private void LimitPstate(bool enabled) {
+        private void SaveAlwaysLimitList()
+        {
+            using (RegistryKey config = Registry.CurrentUser.CreateSubKey("SOFTWARE\\limit-nvpstate"))
+            {
+                config.SetValue("AlwaysLimitList", alwayslimitlist.Text, RegistryValueKind.String);
+            }
+        }
+
+        private void LimitPstate(bool enabled)
+        {
             if (limited && enabled) return;
             if (!limited && !enabled) return;
             inspector.StartInfo.Arguments = enabled
@@ -59,7 +74,8 @@ namespace limit_nvpstate {
         }
 
 
-        private void Limitnvpstate_Load(object sender, EventArgs e) {
+        private void Limitnvpstate_Load(object sender, EventArgs e)
+        {
 
 
             string nvidiaSmiPath = "nvidia-smi"; // Path to nvidia-smi executable
@@ -83,10 +99,11 @@ namespace limit_nvpstate {
             {
                 string pState = lines[0].Trim();
                 Console.WriteLine("Current P-State: " + pState);
-                if(pState == "P8")
+                if (pState == "P8")
                 {
                     limited = true;
-                } else
+                }
+                else
                 {
                     limited = false;
                 }
@@ -107,11 +124,13 @@ namespace limit_nvpstate {
             ManagementObjectCollection gpuCollection = searcher.Get();
 
             // iterate through the collection of GPU objects
-            foreach (ManagementObject gpu in gpuCollection.Cast<ManagementObject>()) {
+            foreach (ManagementObject gpu in gpuCollection.Cast<ManagementObject>())
+            {
                 _ = gpuIndex.Items.Add($"{gpu["Name"]}");
             }
 
-            if (!File.Exists("nvidiaInspector.exe")) {
+            if (!File.Exists("nvidiaInspector.exe"))
+            {
                 _ = MessageBox.Show("Inspector not found in current directory", "limit-nvpstate", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 FormClosing -= Limitnvpstate_FormClosing;
                 Close();
@@ -124,45 +143,58 @@ namespace limit_nvpstate {
 
             LoadSettings();
 
-            if (startMinimizedToolStripMenuItem.Checked) {
+            if (startMinimizedToolStripMenuItem.Checked)
+            {
                 WindowState = FormWindowState.Minimized;
             }
         }
 
-        private void ExitToolStripMenuItem_Click(object sender, EventArgs e) {
+        private void ExitToolStripMenuItem_Click(object sender, EventArgs e)
+        {
             Close();
         }
 
-        private void Limitnvpstate_SizeChanged(object sender, EventArgs e) {
-            if (WindowState == FormWindowState.Minimized && Screen.GetWorkingArea(this).Contains(Cursor.Position)) {
+        private void Limitnvpstate_SizeChanged(object sender, EventArgs e)
+        {
+            if (WindowState == FormWindowState.Minimized && Screen.GetWorkingArea(this).Contains(Cursor.Position))
+            {
                 ShowInTaskbar = false;
                 notifyIcon.Visible = true;
                 Hide();
             }
         }
 
-        private void NotifyIcon_MouseClick(object sender, MouseEventArgs e) {
-            if (e.Button == MouseButtons.Left) {
+        private void NotifyIcon_MouseClick(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
                 WindowState = FormWindowState.Normal;
                 ShowInTaskbar = true;
                 notifyIcon.Visible = false;
                 Show();
-            } else if (e.Button == MouseButtons.Right) {
+            }
+            else if (e.Button == MouseButtons.Right)
+            {
                 notifyIcon.ContextMenuStrip = contextMenuStrip1;
             }
         }
 
-        private void StartMinimizedToolStripMenuItem_Click(object sender, EventArgs e) {
-            using (RegistryKey config = Registry.CurrentUser.CreateSubKey("SOFTWARE\\limit-nvpstate")) {
+        private void StartMinimizedToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            using (RegistryKey config = Registry.CurrentUser.CreateSubKey("SOFTWARE\\limit-nvpstate"))
+            {
                 config.SetValue("StartMinimized", Convert.ToString(startMinimizedToolStripMenuItem.Checked), RegistryValueKind.String);
             }
         }
 
-        private void Limitnvpstate_FormClosing(object sender, FormClosingEventArgs e) {
+        private void Limitnvpstate_FormClosing(object sender, FormClosingEventArgs e)
+        {
             LimitPstate(false);
+            SaveAlwaysLimitList(); // Save the list when closing
         }
 
-        private void ExitToolStripMenuItem1_Click(object sender, EventArgs e) {
+        private void ExitToolStripMenuItem1_Click(object sender, EventArgs e)
+        {
             Close();
         }
 
@@ -194,6 +226,24 @@ namespace limit_nvpstate {
                 return Buff.ToString();
             }
             return null;
+        }
+
+        private bool ShouldAlwaysLimit(string windowTitle)
+        {
+            if (string.IsNullOrEmpty(windowTitle) || alwayslimitlist.Lines == null)
+                return false;
+
+            string lowerTitle = windowTitle.ToLower();
+
+            foreach (string gameName in alwayslimitlist.Lines)
+            {
+                if (!string.IsNullOrWhiteSpace(gameName) && lowerTitle.Contains(gameName.Trim().ToLower()))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         Process process;
@@ -245,7 +295,8 @@ namespace limit_nvpstate {
                 return;
             }
 
-            if (title != null && (title.ToLower().Contains("rimworld") || title.ToLower().Contains("team fortress 2")))
+            // Check if current window should always be limited based on the list
+            if (ShouldAlwaysLimit(title))
             {
                 LimitPstate(true);
                 return;
@@ -313,6 +364,12 @@ namespace limit_nvpstate {
                 config.SetValue("IndexOfGPU", gpuIndex.SelectedIndex, RegistryValueKind.String);
             }
             LoadSettings();
+        }
+
+        private void alwayslimitlist_TextChanged(object sender, EventArgs e)
+        {
+            // Save the always limit list when it changes
+            SaveAlwaysLimitList();
         }
     }
 }

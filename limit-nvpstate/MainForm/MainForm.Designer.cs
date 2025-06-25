@@ -39,6 +39,8 @@
             this.button1 = new System.Windows.Forms.Button();
             this.button2 = new System.Windows.Forms.Button();
             this.checkBox1 = new System.Windows.Forms.CheckBox();
+            this.alwayslimitlist = new System.Windows.Forms.TextBox();
+            this.label1 = new System.Windows.Forms.Label();
             this.groupBox3.SuspendLayout();
             this.contextMenuStrip1.SuspendLayout();
             this.menuStrip1.SuspendLayout();
@@ -172,11 +174,32 @@
             this.checkBox1.UseVisualStyleBackColor = true;
             this.checkBox1.CheckedChanged += new System.EventHandler(this.checkBox1_CheckedChanged);
             // 
+            // alwayslimitlist
+            // 
+            this.alwayslimitlist.Location = new System.Drawing.Point(33, 310);
+            this.alwayslimitlist.Multiline = true;
+            this.alwayslimitlist.Name = "alwayslimitlist";
+            this.alwayslimitlist.Size = new System.Drawing.Size(255, 138);
+            this.alwayslimitlist.TabIndex = 13;
+            this.alwayslimitlist.Text = "rimworld\r\nteam fortress 2\r\n";
+            this.alwayslimitlist.TextChanged += new System.EventHandler(this.alwayslimitlist_TextChanged);
+            // 
+            // label1
+            // 
+            this.label1.AutoSize = true;
+            this.label1.Location = new System.Drawing.Point(29, 278);
+            this.label1.Name = "label1";
+            this.label1.Size = new System.Drawing.Size(290, 20);
+            this.label1.TabIndex = 14;
+            this.label1.Text = "always limit pstate if active title contains:";
+            // 
             // limitnvpstate
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(591, 346);
+            this.ClientSize = new System.Drawing.Size(591, 484);
+            this.Controls.Add(this.label1);
+            this.Controls.Add(this.alwayslimitlist);
             this.Controls.Add(this.checkBox1);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.button1);
@@ -217,6 +240,8 @@
         private System.Windows.Forms.Button button1;
         private System.Windows.Forms.Button button2;
         private System.Windows.Forms.CheckBox checkBox1;
+        private System.Windows.Forms.TextBox alwayslimitlist;
+        private System.Windows.Forms.Label label1;
     }
 }
 
