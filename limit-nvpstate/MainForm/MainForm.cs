@@ -29,27 +29,33 @@ namespace limit_nvpstate {
 
         }
 
-        private void LoadSettings() {
-            using (RegistryKey config = Registry.CurrentUser.CreateSubKey("SOFTWARE\\limit-nvpstate")) {
+        private void LoadSettings()
+        {
+            using (RegistryKey config = Registry.CurrentUser.CreateSubKey("SOFTWARE\\limit-nvpstate"))
+            {
 
-                if (config.GetValue("LimitPState") == null) {
-                    config.SetValue("LimitPState", "1", RegistryValueKind.String);
-                }
 
-                if (config.GetValue("IndexOfGPU") == null) {
+                if (config.GetValue("IndexOfGPU") == null)
+                {
                     config.SetValue("IndexOfGPU", "0", RegistryValueKind.String);
                 }
 
-                if (config.GetValue("StartMinimized") == null) {
+                if (config.GetValue("StartMinimized") == null)
+                {
                     config.SetValue("StartMinimized", "False", RegistryValueKind.String);
                 }
 
-                if (config.GetValue("ProcessList") == null) {
-                    config.SetValue("ProcessList", new string[] { }, RegistryValueKind.MultiString);
+                if (config.GetValue("AutomaticSwitching") == null)
+                {
+                    config.SetValue("AutomaticSwitching", "True", RegistryValueKind.String);
                 }
 
                 gpuIndex.SelectedIndex = Convert.ToInt32(config.GetValue("IndexOfGPU"));
                 startMinimizedToolStripMenuItem.Checked = Convert.ToBoolean(config.GetValue("StartMinimized"));
+
+                // Set checkbox state and variable
+                automaticSwitchingEnabled = Convert.ToBoolean(config.GetValue("AutomaticSwitching"));
+                checkBox1.Checked = automaticSwitchingEnabled;
             }
         }
 
@@ -177,12 +183,12 @@ namespace limit_nvpstate {
 
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        private void slow_click(object sender, EventArgs e)
         {
             LimitPstate(true);
         }
 
-        private void button2_Click(object sender, EventArgs e)
+        private void fast_click(object sender, EventArgs e)
         {
             LimitPstate(false);
         }
@@ -212,7 +218,7 @@ namespace limit_nvpstate {
         int steps_until_slow = 0;
         private void timer1_Tick(object sender, EventArgs e)
         {
-            if(process == null)
+            if (process == null)
             {
                 process = new Process();
                 process.StartInfo.FileName = "nvidia-smi";
@@ -233,13 +239,14 @@ namespace limit_nvpstate {
             try
             {
                 gpuUsage = int.Parse(output.Trim());
-            } 
+            }
             catch { }
             string title = "";
             try
             {
                 title = GetActiveWindowTitle();
-            } catch { }
+            }
+            catch { }
 
             // Print the GPU usage
             Console.WriteLine("GPU Usage: " + gpuUsage + "%");
@@ -247,16 +254,22 @@ namespace limit_nvpstate {
             Console.WriteLine("steps: " + steps_until_slow);
             Console.WriteLine("title: " + title);
 
+            // Only do automatic switching if enabled
+            if (!automaticSwitchingEnabled)
+            {
+                Console.WriteLine("Automatic switching is disabled");
+                return;
+            }
+
             if (title != null && (title.ToLower().Contains("rimworld") || title.ToLower().Contains("team fortress 2")))
             {
                 LimitPstate(true);
                 return;
             }
 
-
             if (limited)
             {
-                if(gpuUsage > 90)
+                if (gpuUsage > 90)
                 {
                     steps_until_fast++;
                 }
@@ -264,14 +277,15 @@ namespace limit_nvpstate {
                 {
                     steps_until_fast = 0;
                 }
-                if(steps_until_fast > 3)
+                if (steps_until_fast > 3)
                 {
                     LimitPstate(false);
                     limited = false;
                     Console.WriteLine("LimitPstate(false);");
                     steps_until_slow = 0;
                 }
-            } else
+            }
+            else
             {
                 if (gpuUsage < 10)
                 {

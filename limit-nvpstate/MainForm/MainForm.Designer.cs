@@ -147,7 +147,7 @@
             this.button1.TabIndex = 9;
             this.button1.Text = "slow";
             this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.button1_Click);
+            this.button1.Click += new System.EventHandler(this.slow_click);
             // 
             // button2
             // 
@@ -157,7 +157,7 @@
             this.button2.TabIndex = 10;
             this.button2.Text = "fast";
             this.button2.UseVisualStyleBackColor = true;
-            this.button2.Click += new System.EventHandler(this.button2_Click);
+            this.button2.Click += new System.EventHandler(this.fast_click);
             // 
             // checkBox1
             // 
