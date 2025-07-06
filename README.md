@@ -2,11 +2,11 @@
 
 ## Features
 
-- **Automatic GPU Power State Management**: Automatically switches between performance and power-saving modes based on GPU utilization
+- **Automatic GPU Power State Management**: Automatically switches between high-performance (P0) and power-saving (P5) mode based on GPU usage
   - Switches to high performance when the (throttled) GPU's usage exceeds 90% for more than 3 consecutive seconds
   - Switches to power-saving mode when the (full power) GPU's usage drops below 10% for more than 5 consecutive seconds
 
-- **Manual Control**: Manual buttons to force GPU into slow (power-saving) or fast (performance) modes
+- **Manual Control**: Manual buttons to force GPU into power-saving or performance mode
 
 - **Toggle Automatic Mode**: Checkbox to enable/disable automatic switching while keeping manual controls available
 
@@ -16,6 +16,11 @@
 
 - **Safe Shutdown**: Automatically restores GPU to normal performance state when application closes
 
+## Code location
+
+https://github.com/timothelaborie/nvidia_auto_pstate/blob/main/limit-nvpstate/MainForm/MainForm.cs
+
 ## How to use
 
-The exe can be found at /limit-nvpstate/bin/x64/Debug/
+- Download the repo as a zip
+- The exe can be found at /limit-nvpstate/bin/x64/Debug/
