@@ -14,19 +14,17 @@ namespace limit_nvpstate
     {
         private readonly Process inspector = new Process();
         private bool automaticSwitchingEnabled = true;
+        private const int LimitPState = 5;  // The P-state we limit to
 
         public limitnvpstate()
         {
             InitializeComponent();
         }
 
-
         private void LoadSettings()
         {
             using (RegistryKey config = Registry.CurrentUser.CreateSubKey("SOFTWARE\\limit-nvpstate"))
             {
-
-
                 if (config.GetValue("IndexOfGPU") == null)
                 {
                     config.SetValue("IndexOfGPU", "0", RegistryValueKind.String);
@@ -50,7 +48,11 @@ namespace limit_nvpstate
                 checkBox1.Checked = automaticSwitchingEnabled;
 
                 // Load the always limit list into the text box
-                alwayslimitlist.Text = config.GetValue("AlwaysLimitList").ToString();
+                object alwaysLimitValue = config.GetValue("AlwaysLimitList");
+                if (alwaysLimitValue != null)
+                {
+                    alwayslimitlist.Text = alwaysLimitValue.ToString();
+                }
             }
         }
 
@@ -64,23 +66,38 @@ namespace limit_nvpstate
 
         private void LimitPstate(bool enabled)
         {
-            if (limited && enabled) return;
-            if (!limited && !enabled) return;
+            if (limited == enabled) return;
+
             inspector.StartInfo.Arguments = enabled
                 ? $"-setPStateLimit:{gpuIndex.SelectedIndex},5"
                 : $"-setPStateLimit:{gpuIndex.SelectedIndex},0";
-            _ = inspector.Start();
-            limited = enabled;
-        }
 
+            try
+            {
+                var p = Process.Start(inspector.StartInfo);
+                p.WaitForExit();  // Wait for the command to complete
+
+                if (p.ExitCode == 0)
+                {
+                    limited = enabled;
+                    Console.WriteLine($"LimitPstate({enabled}) succeeded. Exit code: {p.ExitCode}");
+                }
+                else
+                {
+                    Console.WriteLine($"LimitPstate({enabled}) failed. Exit code: {p.ExitCode}");
+                    // Don't update 'limited' — let the reconcile logic fix it next tick
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Inspector failed: {ex.Message}");
+            }
+        }
 
         private void Limitnvpstate_Load(object sender, EventArgs e)
         {
-
-
-            string nvidiaSmiPath = "nvidia-smi"; // Path to nvidia-smi executable
-
-            // Create a new process to execute nvidia-smi
+            // Query initial P-State to set the initial state of 'limited'
+            string nvidiaSmiPath = "nvidia-smi";
             Process process = new Process();
             process.StartInfo.FileName = nvidiaSmiPath;
             process.StartInfo.Arguments = "--query-gpu=pstate --format=csv,noheader";
@@ -88,42 +105,46 @@ namespace limit_nvpstate
             process.StartInfo.UseShellExecute = false;
             process.StartInfo.CreateNoWindow = true;
 
-            // Start the process and read the output
-            process.Start();
-            string output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit();
-
-            // Parse the output to get the current P-State
-            string[] lines = output.Trim().Split('\n');
-            if (lines.Length > 0)
+            try
             {
-                string pState = lines[0].Trim();
-                Console.WriteLine("Current P-State: " + pState);
-                if (pState == "P8")
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                string[] lines = output.Trim().Split('\n');
+                if (lines.Length > 0)
                 {
-                    limited = true;
+                    string pState = lines[0].Trim();
+                    Console.WriteLine("Current P-State: " + pState);
+
+                    // Parse P-state number and determine if limited
+                    if (pState.StartsWith("P") && int.TryParse(pState.Substring(1), out int pStateNum))
+                    {
+                        limited = pStateNum >= LimitPState;
+                        Console.WriteLine($"Initial limited state: {limited} (P-state {pStateNum})");
+                    }
+                    else
+                    {
+                        limited = false;
+                        Console.WriteLine("Could not parse P-state, assuming unlimited");
+                    }
                 }
                 else
                 {
+                    Console.WriteLine("Failed to get P-State.");
                     limited = false;
                 }
             }
-            else
+            catch (Exception ex)
             {
-                Console.WriteLine("Failed to get P-State.");
+                Console.WriteLine($"Error querying initial P-state: {ex.Message}");
+                limited = false;
             }
 
-
-
-
-
-            // create a new instance of the ManagementObjectSearcher class
+            // Enumerate GPUs
             ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT * FROM Win32_VideoController");
-
-            // call the Get method of the ManagementObjectSearcher class to retrieve a collection of GPU objects
             ManagementObjectCollection gpuCollection = searcher.Get();
 
-            // iterate through the collection of GPU objects
             foreach (ManagementObject gpu in gpuCollection.Cast<ManagementObject>())
             {
                 _ = gpuIndex.Items.Add($"{gpu["Name"]}");
@@ -136,10 +157,9 @@ namespace limit_nvpstate
                 Close();
             }
 
-            // configure inspector launch settings
+            // Configure inspector launch settings
             inspector.StartInfo.FileName = "nvidiaInspector.exe";
             inspector.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-
 
             LoadSettings();
 
@@ -190,14 +210,13 @@ namespace limit_nvpstate
         private void Limitnvpstate_FormClosing(object sender, FormClosingEventArgs e)
         {
             LimitPstate(false);
-            SaveAlwaysLimitList(); // Save the list when closing
+            SaveAlwaysLimitList();
         }
 
         private void ExitToolStripMenuItem1_Click(object sender, EventArgs e)
         {
             Close();
         }
-
 
         private void slow_click(object sender, EventArgs e)
         {
@@ -230,7 +249,7 @@ namespace limit_nvpstate
 
         private bool ShouldAlwaysLimit(string windowTitle)
         {
-            if (string.IsNullOrEmpty(windowTitle) || alwayslimitlist.Lines == null)
+            if (string.IsNullOrEmpty(windowTitle) || alwayslimitlist.Lines == null || alwayslimitlist.Lines.Length == 0)
                 return false;
 
             string lowerTitle = windowTitle.ToLower();
@@ -250,13 +269,15 @@ namespace limit_nvpstate
         bool limited = false;
         int steps_until_fast = 0;
         int steps_until_slow = 0;
+        int reconcile_counter = 0;  // Debounce counter for reconciliation
+
         private void timer1_Tick(object sender, EventArgs e)
         {
             if (process == null)
             {
                 process = new Process();
                 process.StartInfo.FileName = "nvidia-smi";
-                process.StartInfo.Arguments = "--query-gpu=utilization.gpu --format=csv,noheader,nounits";
+                process.StartInfo.Arguments = "--query-gpu=utilization.gpu,pstate --format=csv,noheader,nounits";
                 process.StartInfo.RedirectStandardOutput = true;
                 process.StartInfo.UseShellExecute = false;
                 process.StartInfo.CreateNoWindow = true;
@@ -264,83 +285,145 @@ namespace limit_nvpstate
             }
 
             // Start the process and read the output
-            process.Start();
-            string output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit();
-
-            // Parse the output to get the GPU usage
-            int gpuUsage = 0;
             try
             {
-                gpuUsage = int.Parse(output.Trim());
-            }
-            catch { }
-            string title = "";
-            try
-            {
-                title = GetActiveWindowTitle();
-            }
-            catch { }
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
 
-            // Print the GPU usage
-            Console.WriteLine("GPU Usage: " + gpuUsage + "%");
-            Console.WriteLine("limited: " + limited);
-            Console.WriteLine("steps: " + steps_until_slow);
-            Console.WriteLine("title: " + title);
-
-            // Only do automatic switching if enabled
-            if (!automaticSwitchingEnabled)
-            {
-                Console.WriteLine("Automatic switching is disabled");
-                return;
-            }
-
-            // Check if current window should always be limited based on the list
-            if (ShouldAlwaysLimit(title))
-            {
-                LimitPstate(true);
-                return;
-            }
-
-            if (limited)
-            {
-                if (gpuUsage > 90)
+                // Parse the output to get the GPU usage and P-State
+                // Expected format: "12, P8"
+                int gpuUsage = 0;
+                string currentPState = "";
+                try
                 {
-                    steps_until_fast++;
+                    string firstLine = output.Trim().Split('\n')[0];
+                    string[] parts = firstLine.Split(',');
+
+                    if (int.TryParse(parts[0].Trim(), out int usage))
+                        gpuUsage = usage;
+
+                    if (parts.Length > 1)
+                        currentPState = parts[1].Trim();
+                }
+                catch { }
+
+                string title = "";
+                try
+                {
+                    title = GetActiveWindowTitle();
+                }
+                catch { }
+
+                // ---- Update label3 with the actual current state from the GPU ----
+                if (!string.IsNullOrEmpty(currentPState))
+                {
+                    label3.Text = currentPState;
                 }
                 else
                 {
-                    steps_until_fast = 0;
+                    label3.Text = "Error";
                 }
-                if (steps_until_fast > 3)
+                // -----------------------------------------------------------------
+
+                // ---- RECONCILE: Check if 'limited' matches reality ----
+                int currentPStateNum = -1;
+                if (currentPState.StartsWith("P") &&
+                    int.TryParse(currentPState.Substring(1), out int n))
                 {
-                    LimitPstate(false);
-                    Console.WriteLine("LimitPstate(false);");
-                    steps_until_slow = 0;
+                    currentPStateNum = n;
                 }
-            }
-            else
-            {
-                if (gpuUsage < 10)
+
+                if (currentPStateNum >= 0)
                 {
-                    steps_until_slow++;
+                    bool actuallyLimited = currentPStateNum >= LimitPState;
+
+                    if (actuallyLimited != limited)
+                    {
+                        reconcile_counter++;
+                        // Require 2 consecutive ticks of disagreement before correcting
+                        // (to avoid flicker from transient states)
+                        if (reconcile_counter >= 2)
+                        {
+                            Console.WriteLine($"[RECONCILE] limited {limited} -> {actuallyLimited} (P-state {currentPStateNum})");
+                            limited = actuallyLimited;
+                            reconcile_counter = 0;
+                        }
+                    }
+                    else
+                    {
+                        reconcile_counter = 0;
+                    }
                 }
-                else
+
+                // Print the GPU usage
+                Console.WriteLine("GPU Usage: " + gpuUsage + "%");
+                Console.WriteLine("limited: " + limited);
+                Console.WriteLine("steps_until_slow: " + steps_until_slow);
+                Console.WriteLine("steps_until_fast: " + steps_until_fast);
+                Console.WriteLine("title: " + title);
+
+                // Only do automatic switching if enabled
+                if (!automaticSwitchingEnabled)
                 {
-                    steps_until_slow = 0;
+                    Console.WriteLine("Automatic switching is disabled");
+                    return;
                 }
-                if (steps_until_slow > 5)
+
+                // Check if current window should always be limited based on the list
+                if (ShouldAlwaysLimit(title))
                 {
                     LimitPstate(true);
-                    Console.WriteLine("LimitPstate(true);");
-                    steps_until_fast = 0;
+                    return;
                 }
+
+                // Automatic switching logic
+                if (limited)
+                {
+                    // Currently limited; check if we should go fast
+                    if (gpuUsage > 90)
+                    {
+                        steps_until_fast++;
+                    }
+                    else
+                    {
+                        steps_until_fast = 0;
+                    }
+                    if (steps_until_fast > 3)
+                    {
+                        LimitPstate(false);
+                        Console.WriteLine("LimitPstate(false);");
+                        steps_until_slow = 0;
+                    }
+                }
+                else
+                {
+                    // Currently unlimited; check if we should go slow
+                    if (gpuUsage < 10)
+                    {
+                        steps_until_slow++;
+                    }
+                    else
+                    {
+                        steps_until_slow = 0;
+                    }
+                    if (steps_until_slow > 5)
+                    {
+                        LimitPstate(true);
+                        Console.WriteLine("LimitPstate(true);");
+                        steps_until_fast = 0;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in timer tick: {ex.Message}");
             }
         }
 
         private void button3_Click(object sender, EventArgs e)
         {
-
+            // Placeholder
         }
 
         // auto mode on or off
